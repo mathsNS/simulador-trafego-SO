@@ -4,38 +4,149 @@
 #include "traffic_light.h"
 #include "types.h"
 
+// descobre a direção de movimento entre duas células adjacentes
+static Direction dir_between(int row, int col, int next_row, int next_col) {
+    if (next_row == row - 1) return NORTH;
+    if (next_row == row + 1) return SOUTH;
+    if (next_col == col + 1) return EAST;
+    return WEST;
+}
+
+static int is_ns_direction(Direction dir) {
+    return dir == NORTH || dir == SOUTH;
+}
+
 void vehicle_init(Vehicle *v, int id, VehicleType type,
-                  int start_row, int start_col, Direction dir,
-                  int route[][2], int route_len) {
-    // TODO: preencher todos os campos da struct Vehicle
-    // nao esquecer de definir speed_ticks conforme o tipo (1, 2 ou 4)
-    // marcar a celula inicial como ocupada (occupant = id) usando o lock da celula
-    (void)v; (void)id; (void)type;
-    (void)start_row; (void)start_col; (void)dir;
-    (void)route; (void)route_len;
+                   int start_row, int start_col, Direction dir,
+                   int route[][2], int route_len) {
+    v->id = id;
+    v->type = type;
+    v->row = start_row;
+    v->col = start_col;
+    v->dir = dir;
+    v->route_pos = 0;
+    v->route_len = route_len;
+    v->active = 1;
+
+    switch (type) {
+        case CAR_FAST:   v->speed_ticks = 1; break;
+        case CAR_MEDIUM: v->speed_ticks = 2; break;
+        case CAR_SLOW:   v->speed_ticks = 4; break;
+        case AMBULANCE:  v->speed_ticks = 1; break;
+        default:         v->speed_ticks = 1; break;
+    }
+
+    for (int i = 0; i < route_len && i < MAX_ROUTE; i++) {
+        v->route[i][0] = route[i][0];
+        v->route[i][1] = route[i][1];
+    }
+
+    // marca a célula inicial como ocupada por este veículo
+    Cell *start_cell = &sim.map[start_row][start_col];
+    pthread_mutex_lock(&start_cell->lock);
+    start_cell->occupant = id;
+    pthread_mutex_unlock(&start_cell->lock);
 }
 
 void *vehicle_thread(void *arg) {
     Vehicle *v = (Vehicle *)arg;
+    long last_tick = 0;
+    int ticks_since_move = 0;
 
-    // loop principal: roda enquanto a sim estiver ativa e o veiculo tiver rota
-    //
-    // a cada iteracao:
-    // 1. bloquear em sim.tick_cond esperando o proximo tick (sem busy-wait)
-    //    usar pthread_cond_wait dentro de pthread_mutex_lock/unlock em sim.tick_lock
-    // 2. verificar se e a vez deste veiculo mover (baseado em speed_ticks)
-    // 3. calcular a proxima celula da rota
-    // 4. se for CELL_INTERSECTION: verificar o semaforo
-    //    bloquear em ns_green ou ew_green conforme a direcao de movimento
-    //    isso evita busy-wait no sinal vermelho
-    // 5. adquirir o lock da celula destino e checar se occupant == -1
-    //    se estiver ocupada, pular o tick (nao pode ultrapassar)
-    // 6. mover: liberar celula atual, ocupar celula destino, atualizar v->row/col
-    // 7. avancar route_pos; se chegou ao fim, setar v->active = 0
-    //
-    // IMPORTANTE: a estrategia contra deadlock e adquirir sempre um lock por vez
-    // nunca segurar o lock de uma celula enquanto espera o lock de outra
+    while (1) {
+        // 1. espera o próximo tick do relogio (sem busy-wait)
+        pthread_mutex_lock(&sim.tick_lock);
+        while (sim.running && sim.tick == last_tick) {
+            pthread_cond_wait(&sim.tick_cond, &sim.tick_lock);
+        }
+        last_tick = sim.tick;
+        int still_running = sim.running;
+        pthread_mutex_unlock(&sim.tick_lock);
 
-    (void)v;
+        if (!still_running) break;
+        if (!v->active) break;
+
+        if (v->route_pos >= v->route_len - 1) {
+            v->active = 0;
+            break;
+        }
+
+        // 2. só tenta se mover a cada speed_ticks ticks
+        ticks_since_move++;
+        if (ticks_since_move < v->speed_ticks) {
+            continue;
+        }
+        ticks_since_move = 0;
+
+        // 3. calcula a próxima célula da rota
+        int next_row = v->route[v->route_pos + 1][0];
+        int next_col = v->route[v->route_pos + 1][1];
+        Direction move_dir = dir_between(v->row, v->col, next_row, next_col);
+
+        int vr, vc;
+        if (!map_valid_move(v->row, v->col, move_dir, &vr, &vc)) {
+            // rota mal formada / movimento não permitido: encerra o veículo
+            fprintf(stderr, "[VEICULO %d] movimento invalido de (%d,%d)\n",
+                    v->id, v->row, v->col);
+            v->active = 0;
+            break;
+        }
+        v->dir = move_dir;
+
+        // 4. se o destino for cruzamento, bloqueia até o sinal ficar verde
+        //    na direção do movimento (sem busy-wait: pthread_cond_wait)
+        Cell *next_cell = &sim.map[next_row][next_col];
+        if (next_cell->type == CELL_INTERSECTION) {
+            TrafficLight *light = map_get_light_at(next_row, next_col);
+            if (light != NULL) {
+                int is_ns = is_ns_direction(move_dir);
+                pthread_mutex_lock(&light->lock);
+                if (is_ns) {
+                    while (sim.running && light->ns_state != LIGHT_GREEN) {
+                        pthread_cond_wait(&light->ns_green, &light->lock);
+                    }
+                } else {
+                    while (sim.running && light->ew_state != LIGHT_GREEN) {
+                        pthread_cond_wait(&light->ew_green, &light->lock);
+                    }
+                }
+                pthread_mutex_unlock(&light->lock);
+            }
+        }
+
+        if (!sim.running) break;
+
+        // 5. tenta ocupar a célula destino.
+        //    estratégia anti-deadlock: nunca segura o lock de duas
+        //    células ao mesmo tempo (destino e liberado antes de
+        //    tocar na celula atual, e vice-versa).
+        Cell *current_cell = &sim.map[v->row][v->col];
+
+        pthread_mutex_lock(&next_cell->lock);
+        if (next_cell->occupant != -1) {
+            // célula ocupada: não pode avançar nem ultrapassar,
+            // espera o próximo tick e tenta de novo
+            pthread_mutex_unlock(&next_cell->lock);
+            continue;
+        }
+        next_cell->occupant = v->id;
+        pthread_mutex_unlock(&next_cell->lock);
+
+        // 6. libera a célula atual e atualiza a posição do veículo
+        pthread_mutex_lock(&current_cell->lock);
+        current_cell->occupant = -1;
+        pthread_mutex_unlock(&current_cell->lock);
+
+        v->row = next_row;
+        v->col = next_col;
+        v->route_pos++;
+
+        // 7. chegou ao fim da rota?
+        if (v->route_pos >= v->route_len - 1) {
+            v->active = 0;
+            break;
+        }
+    }
+
     return NULL;
 }
