@@ -8,12 +8,27 @@
 void *clock_thread(void *arg) {
     (void)arg;
 
-    // TODO: a cada TICK_MS milissegundos (usar nanosleep ou usleep):
-    // 1. incrementar sim.tick
-    // 2. fazer broadcast em sim.tick_cond pra acordar todos os veiculos e semaforos
-    //    usar pthread_mutex_lock/unlock em sim.tick_lock ao redor do broadcast
-    // 3. chamar render_frame()
-    // 4. quando sim.tick >= SIM_DURATION_TICKS, setar sim.running = 0 e sair
+    struct timespec ts;
+    ts.tv_sec  = TICK_MS / 1000;
+    ts.tv_nsec = (TICK_MS % 1000) * 1000000L;
+
+    while (sim.running) {
+        nanosleep(&ts, NULL);
+
+        pthread_mutex_lock(&sim.tick_lock);
+        sim.tick++;
+        long current_tick = sim.tick;
+        pthread_cond_broadcast(&sim.tick_cond);
+        pthread_mutex_unlock(&sim.tick_lock);
+
+        render_frame();
+
+        if (current_tick >= SIM_DURATION_TICKS) {
+            pthread_mutex_lock(&sim.tick_lock);
+            sim.running = 0;
+            pthread_mutex_unlock(&sim.tick_lock);
+        }
+    }
 
     return NULL;
 }
