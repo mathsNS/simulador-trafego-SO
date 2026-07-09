@@ -3,6 +3,7 @@
 #include "map.h"
 #include "traffic_light.h"
 #include "route.h"
+#include "speed.h"
 #include "types.h"
 
 static int is_ns_direction(Direction dir) {
@@ -21,13 +22,7 @@ void vehicle_init(Vehicle *v, int id, VehicleType type,
     v->route_len = route_len;
     v->active = 1;
 
-    switch (type) {
-        case CAR_FAST:   v->speed_ticks = 1; break;
-        case CAR_MEDIUM: v->speed_ticks = 2; break;
-        case CAR_SLOW:   v->speed_ticks = 4; break;
-        case AMBULANCE:  v->speed_ticks = 1; break;
-        default:         v->speed_ticks = 1; break;
-    }
+    v->speed_ticks = speed_ticks_for_type(type);
 
     for (int i = 0; i < route_len && i < MAX_ROUTE; i++) {
         v->route[i][0] = route[i][0];
@@ -64,9 +59,8 @@ void *vehicle_thread(void *arg) {
             break;
         }
 
-        // 2. só tenta se mover a cada speed_ticks ticks
-        ticks_since_move++;
-        if (ticks_since_move < v->speed_ticks) {
+        // 2. só tenta se mover quando o módulo de velocidade libera
+        if (!speed_should_move(&ticks_since_move, v->speed_ticks)) {
             continue;
         }
         ticks_since_move = 0;
