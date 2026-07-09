@@ -55,8 +55,10 @@ void *traffic_light_thread(void *arg) {
     }
 
     // acorda qualquer carro preso aqui quando a sim terminar
+    pthread_mutex_lock(&l->lock);
     pthread_cond_broadcast(&l->ns_green);
     pthread_cond_broadcast(&l->ew_green);
+    pthread_mutex_unlock(&l->lock);
     return NULL;
 }
 
