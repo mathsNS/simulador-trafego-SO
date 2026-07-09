@@ -2,15 +2,8 @@
 #include "vehicle.h"
 #include "map.h"
 #include "traffic_light.h"
+#include "route.h"
 #include "types.h"
-
-// descobre a direção de movimento entre duas células adjacentes
-static Direction dir_between(int row, int col, int next_row, int next_col) {
-    if (next_row == row - 1) return NORTH;
-    if (next_row == row + 1) return SOUTH;
-    if (next_col == col + 1) return EAST;
-    return WEST;
-}
 
 static int is_ns_direction(Direction dir) {
     return dir == NORTH || dir == SOUTH;
@@ -81,7 +74,7 @@ void *vehicle_thread(void *arg) {
         // 3. calcula a próxima célula da rota
         int next_row = v->route[v->route_pos + 1][0];
         int next_col = v->route[v->route_pos + 1][1];
-        Direction move_dir = dir_between(v->row, v->col, next_row, next_col);
+        Direction move_dir = route_dir_between(v->row, v->col, next_row, next_col);
 
         int vr, vc;
         if (!map_valid_move(v->row, v->col, move_dir, &vr, &vc)) {
