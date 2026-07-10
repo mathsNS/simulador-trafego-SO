@@ -135,5 +135,9 @@ void *vehicle_thread(void *arg) {
         }
     }
 
+    pthread_mutex_lock(&sim.map[v->row][v->col].lock);
+    sim.map[v->row][v->col].occupant = -1;
+    pthread_mutex_unlock(&sim.map[v->row][v->col].lock);
+
     return NULL;
 }
