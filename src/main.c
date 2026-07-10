@@ -43,59 +43,55 @@ static void setup_vehicles(void) {
     int len;
     int n = 0;
 
-    // linha 1 mao unica leste
+    // linha 1 - mao unica leste
     make_h_route(1, 1, 9, route, &len);
     vehicle_init(&sim.vehicles[n], n, CAR_FAST, 1, 1, EAST, route, len);
     pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
 
-    // linha 5 leste e oeste (sentidos opostos, vao se cruzar)
+    make_h_route(1, 4, 9, route, &len);
+    vehicle_init(&sim.vehicles[n], n, CAR_MEDIUM, 1, 4, EAST, route, len);
+    pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
+
+    // linha 5 - apenas leste (sem opostos)
     make_h_route(5, 1, 9, route, &len);
     vehicle_init(&sim.vehicles[n], n, CAR_MEDIUM, 5, 1, EAST, route, len);
     pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
 
-    make_h_route(5, 9, 1, route, &len);
-    vehicle_init(&sim.vehicles[n], n, CAR_SLOW, 5, 9, WEST, route, len);
+    make_h_route(5, 3, 9, route, &len);
+    vehicle_init(&sim.vehicles[n], n, CAR_SLOW, 5, 3, EAST, route, len);
     pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
 
-    // linha 9 leste e oeste
-    make_h_route(9, 1, 9, route, &len);
-    vehicle_init(&sim.vehicles[n], n, CAR_FAST, 9, 1, EAST, route, len);
-    pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
-
+    // linha 9 - apenas oeste (sem opostos)
     make_h_route(9, 9, 1, route, &len);
-    vehicle_init(&sim.vehicles[n], n, CAR_MEDIUM, 9, 9, WEST, route, len);
+    vehicle_init(&sim.vehicles[n], n, CAR_FAST, 9, 9, WEST, route, len);
     pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
 
-    // coluna 1 sul e norte
+    make_h_route(9, 7, 1, route, &len);
+    vehicle_init(&sim.vehicles[n], n, CAR_MEDIUM, 9, 7, WEST, route, len);
+    pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
+
+    // coluna 1 - apenas sul
     make_v_route(1, 2, 9, route, &len);
     vehicle_init(&sim.vehicles[n], n, CAR_SLOW, 2, 1, SOUTH, route, len);
     pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
 
-    make_v_route(1, 8, 1, route, &len);
-    vehicle_init(&sim.vehicles[n], n, CAR_FAST, 8, 1, NORTH, route, len);
+    make_v_route(1, 4, 9, route, &len);
+    vehicle_init(&sim.vehicles[n], n, CAR_FAST, 4, 1, SOUTH, route, len);
     pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
 
-    // coluna 5 sul e norte
-    make_v_route(5, 2, 9, route, &len);
-    vehicle_init(&sim.vehicles[n], n, CAR_MEDIUM, 2, 5, SOUTH, route, len);
-    pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
-
+    // coluna 5 - apenas norte
     make_v_route(5, 8, 1, route, &len);
-    vehicle_init(&sim.vehicles[n], n, CAR_SLOW, 8, 5, NORTH, route, len);
+    vehicle_init(&sim.vehicles[n], n, CAR_MEDIUM, 8, 5, NORTH, route, len);
     pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
 
-    // coluna 9 sul e norte
+    make_v_route(5, 6, 1, route, &len);
+    vehicle_init(&sim.vehicles[n], n, CAR_SLOW, 6, 5, NORTH, route, len);
+    pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
+
+    // ambulancia - coluna 9 sul, unico veiculo nesse trecho
+    // cruza os semaforos em (5,9) e (9,9) demonstrando prioridade
     make_v_route(9, 2, 9, route, &len);
-    vehicle_init(&sim.vehicles[n], n, CAR_FAST, 2, 9, SOUTH, route, len);
-    pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
-
-    make_v_route(9, 8, 1, route, &len);
-    vehicle_init(&sim.vehicles[n], n, CAR_MEDIUM, 8, 9, NORTH, route, len);
-    pthread_create(&vehicle_threads[n], NULL, vehicle_thread, &sim.vehicles[n]); n++;
-
-    // ambulancia linha 9 cruzando os semaforos em (9,5) e (9,9)
-    make_h_route(9, 3, 9, route, &len);
-    vehicle_init(&sim.vehicles[n], n, AMBULANCE, 9, 3, EAST, route, len);
+    vehicle_init(&sim.vehicles[n], n, AMBULANCE, 2, 9, SOUTH, route, len);
     pthread_create(&vehicle_threads[n], NULL, ambulance_thread, &sim.vehicles[n]); n++;
 
     sim.num_vehicles = n;
